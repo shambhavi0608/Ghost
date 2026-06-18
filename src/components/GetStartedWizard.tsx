@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Check, Shield, AlertCircle, Cpu, Eye, EyeOff, Globe, Sparkles, Smartphone, Layers } from "lucide-react";
+import { runFullScan } from "../../browser scanner/scan-engine";
 
 interface GetStartedWizardProps {
   isOpen: boolean;
@@ -85,7 +86,27 @@ export default function GetStartedWizard({
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    console.log("WIZARD EFFECT RUNNING");
+    console.log("About to call runFullScan");
+
+    if (!isOpen) {
+      console.log("Wizard closed");
+      return;
+    }
+
+    console.log("Wizard opened");
+
+    console.log("ABOUT TO CALL RUNFULLSCAN VERSION 999");
+    console.log(runFullScan);
+    alert("VERSION 999");
+
+    runFullScan()
+      .then((result) => {
+        console.log("Ghost Scan Result:", result);
+      })
+      .catch((err) => {
+        console.error("Ghost Scan Failed:", err);
+      });
 
     setScanState("scanning");
     setLoadingStep(0);
@@ -187,7 +208,8 @@ export default function GetStartedWizard({
                 </div>
 
                 <div className="space-y-2">
-                  <h3 className="text-xl font-bold text-white font-sans">
+                  <h3 className="text-xl font-bold text-red-500 font-sans">
+                    THIS IS VERSION 999
                     {scanType === "fingerprint" ? "Analyzing Digital Fingerprint" : "Calibrating Sandbox Aperture"}
                   </h3>
                   <div className="text-xs font-mono text-[#00f5d4] bg-[#00f5d4]/5 px-4 py-2 rounded-xl border border-[#00f5d4]/25 max-w-sm inline-block">

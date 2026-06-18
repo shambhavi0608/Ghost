@@ -13,6 +13,7 @@ import { motion, AnimatePresence, animate } from "motion/react";
 
 import Header from "./components/Header";
 import GetStartedWizard from "./components/GetStartedWizard";
+import { runFullScan } from "@/browser scanner/scan-engine/runScan";
 
 // Official FastAPI Threat JSON payload model from the backend team
 const THREAT_DATA = {
@@ -180,6 +181,9 @@ function ThreatScoreGauge({ score }: { score: number }) {
 
 export default function App() {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  useEffect(() => {
+    console.log("isWizardOpen =", isWizardOpen);
+  }, [isWizardOpen]);
   const [wizardType, setWizardType] = useState<"fingerprint" | "photo">("fingerprint");
   const [activePopup, setActivePopup] = useState<"none" | "about" | "how-it-works">("none");
   const [isPhotoDropdownOpen, setIsPhotoDropdownOpen] = useState(false);
@@ -203,6 +207,7 @@ export default function App() {
   });
 
   const [notification, setNotification] = useState<string | null>(null);
+  const [threatData, setThreatData] = useState<any>(null);
 
   useEffect(() => {
     if (notification) {
@@ -220,7 +225,8 @@ export default function App() {
     dnsOverHttps: false,
   });
 
-  const baseScore = THREAT_DATA.analysis.ghost_score;
+  const displayData = threatData || THREAT_DATA;
+  const baseScore = displayData.analysis.ghost_score;
   const canvasReduction = shieldToggles.canvas ? 20 : 0;
   const userAgentReduction = shieldToggles.userAgent ? 15 : 0;
   const webRTCReduction = shieldToggles.webRTC ? 20 : 0;
@@ -290,13 +296,81 @@ export default function App() {
       setScanProgress(progress);
 
       if (elapsed >= duration) {
-        clearInterval(progressInterval);
-        setTimeout(() => {
-          // Route main application layout to Screen 3 (The Threat Dashboard)
-          setIsScanning(false);
-          setAppScreen("dashboard");
-        }, 300);
+      clearInterval(progressInterval);
+
+      (async () => {
+      try {
+      console.log("STARTING REAL SCAN");
+
+        const result = await runFullScan();
+        console.log("TRACKERS", result.trackers);
+        console.log("TRACKERS LENGTH", result.trackers?.length);
+
+        console.log("ENTROPY", result.entropy);
+
+        console.log("PERMISSIONS", result.permissions);
+
+        console.log("FINGERPRINT", result.fingerprint);
+
+        console.log("SCAN RESULT", result);
+
+        const permissionCount =
+          Object.values(result.permissions)
+          .filter((v) => v === "granted")
+          .length;
+
+        const formData = new FormData();
+
+        formData.append(
+          "tracker_count",
+          String(result.trackers.count)
+        );
+
+        formData.append(
+          "entropy_score",
+          String(result.entropy.score)
+        );
+
+        formData.append(
+          "permission_count",
+          String(permissionCount)
+        );
+
+        formData.append(
+          "fingerprint_id",
+          result.fingerprint.hash
+        );
+        if (uploadedFile) {
+          formData.append("image", uploadedFile);
+        }
+        console.log("UPLOADED FILE:", uploadedFile);
+
+        for (const pair of formData.entries()) {
+          console.log(pair[0], pair[1]);
+        }
+        const response = await fetch(
+          "http://127.0.0.1:8000/analyze",
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        const analysis = await response.json();
+
+        console.log("BACKEND ANALYSIS", analysis);
+
+        setThreatData(analysis);
+
+        setIsScanning(false);
+        setAppScreen("dashboard");
+
+      } catch (err) {
+        console.error("SCAN FAILED", err);
       }
+      })();
+      }
+
     }, 30);
 
     return () => {
@@ -324,10 +398,11 @@ export default function App() {
     const file = e.target.files?.[0];
     if (file) {
       setUploadedFileName(file.name);
-      const url = URL.createObjectURL(file);
-      setUploadedFile(url);
+      setUploadedFile(file);
       setWizardType("photo");
       setPhotoMode("upload");
+
+      setIsWizardOpen(true);
       // Seamless layout transition on image upload
       setIsScanning(true);
       setAppScreen("scanning");
@@ -377,12 +452,17 @@ export default function App() {
       {/* Header Container - Dampened to opacity-30 during Scanning */}
       <div className={`transition-all duration-700 relative z-50 ${isScanning ? "opacity-30 pointer-events-none blur-[0.5px]" : "opacity-100"}`}>
         <Header 
-          onOpenWizard={() => {
-            setWizardType("fingerprint");
-            setPhotoMode(null);
-            setIsScanning(true);
-            setAppScreen("scanning");
-          }}
+         onOpenWizard={() => {
+          console.log("OPEN BUTTON CLICKED");
+
+          setWizardType("fingerprint");
+          setPhotoMode(null);
+
+          setIsWizardOpen(true);
+
+          setIsScanning(true);
+          setAppScreen("scanning");
+      }}
           onNavigateToAbout={() => setActivePopup("about")}
           onNavigateToHowItWorks={() => setActivePopup("how-it-works")}
           onNavigateToLanding={() => {
@@ -563,13 +643,13 @@ export default function App() {
                         <div className="space-y-1.5">
                           <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">Primary Threat Block</div>
                           <div className="text-lg font-black text-white font-sans leading-snug">
-                            {THREAT_DATA.analysis.biggest_risk}
+                            {displayData.analysis.biggest_risk}
                           </div>
                         </div>
                         <div className="space-y-2 pt-2">
                           <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">Detected Vulnerability Log</div>
                           <ul className="space-y-1.5">
-                            {THREAT_DATA.analysis.all_risks.map((risk, idx) => (
+                            {displayData.analysis.all_risks.map((risk, idx) => (
                               <li key={idx} className="flex items-start gap-2 text-xs text-zinc-400 leading-relaxed font-sans">
                                 <span className="text-red-500 font-bold shrink-0 mt-0.5">•</span>
                                 <span>{risk}</span>
@@ -593,7 +673,7 @@ export default function App() {
                           <span>Identity Leak Target Nodes (Access Without Consent)</span>
                         </div>
                         <div className="space-y-3 pt-1">
-                          {THREAT_DATA.identity_matches.map((match, idx) => (
+                          {displayData.identity_matches.map((match, idx) => (
                             <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl bg-black/45 border border-zinc-900/70 gap-2 hover:border-zinc-800 transition-colors">
                               <div className="flex items-center gap-2">
                                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping shrink-0" />
@@ -629,12 +709,12 @@ export default function App() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div className="p-3 bg-black/40 rounded-xl border border-zinc-900/80 flex flex-col justify-center">
                             <span className="text-[9px] font-mono text-zinc-500 uppercase tracking-wider block">Image Format</span>
-                            <span className="text-xs font-bold text-zinc-350 mt-1">{THREAT_DATA.image_analysis.metadata.format}</span>
+                            <span className="text-xs font-bold text-zinc-350 mt-1">{displayData.image_analysis?.metadata?.format ?? "N/A"}</span>
                           </div>
                           <div className="p-3 bg-black/40 rounded-xl border border-zinc-900/80 flex flex-col justify-center font-sans">
                             <span className="text-[9px] font-mono text-zinc-500 uppercase tracking-wider block">Real Dimension Parameters</span>
                             <span className="text-xs font-bold text-zinc-350 mt-1">
-                              {THREAT_DATA.image_analysis.metadata.size[0]} x {THREAT_DATA.image_analysis.metadata.size[1]} ({THREAT_DATA.image_analysis.metadata.mode})
+                              {displayData.image_analysis?.metadata?.size?.[0] ?? 0} x {displayData.image_analysis?.metadata?.size?.[1] ?? 0} ({displayData.image_analysis?.metadata?.mode ?? "Unknown"})
                             </span>
                           </div>
                           <div className="p-3 bg-red-950/25 rounded-xl border border-red-500/30 flex flex-col justify-center font-sans shadow-[0_0_12px_rgba(239,68,68,0.15)] hover:border-red-500/50 transition-colors">
@@ -649,7 +729,7 @@ export default function App() {
                         <div className="pt-2">
                           <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest block mb-2 font-semibold">Exif data preview hash identifiers</span>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[10.5px]">
-                            {THREAT_DATA.image_analysis.exif_preview.map((tag, idx) => (
+                            {(displayData.image_analysis?.exif_preview ?? []).map((tag, idx) => (
                               <div key={idx} className="bg-zinc-900/30 px-3 py-2 rounded-lg border border-zinc-900 text-center text-zinc-400 font-mono hover:text-[#00f5d4] hover:border-[#00f5d4]/20 transition-all">
                                 #{tag}
                               </div>
@@ -662,11 +742,11 @@ export default function App() {
                   </div>
 
                   {/* Volatile Green Memory Cleanup Notification Banner */}
-                  {THREAT_DATA.privacy.cleanup_status === "completed" && (
+                  {displayData.privacy.cleanup_status === "completed" && (
                     <div className="w-full bg-emerald-950/20 border border-emerald-500/30 text-emerald-400 font-mono text-[11px] p-4 rounded-2xl flex items-start gap-3 mt-4 leading-relaxed shadow-[0_4px_16px_rgba(16,185,129,0.1)]">
                       <span className="text-sm shrink-0 leading-none">✓</span>
                       <div>
-                        <span className="font-bold text-emerald-300">Cleanup Status: Completed</span> — {THREAT_DATA.privacy.message}
+                        <span className="font-bold text-emerald-300">Cleanup Status: Completed</span> — {displayData.privacy.message}
                       </div>
                     </div>
                   )}
