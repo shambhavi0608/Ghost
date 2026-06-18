@@ -72,10 +72,10 @@ Ghost performs a **real-time, client-side browser audit** — no account, no sig
 │                    THE GHOST EXPERIENCE                     │
 │                                                             │
 │    SHOCK          UNDERSTANDING          ACTION             │
-│      │                  │                  │               │
-│  "My GPU is        "Here's how         "Install            │
-│   visible?"      fingerprinting        uBlock +            │
-│                    works..."          enable RFP"          │
+│      │                  │                  │                │
+│  "My GPU is        "Here's how         "Install             │
+│   visible?"      fingerprinting        uBlock +             │
+│                    works..."          enable RFP"           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
